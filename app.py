@@ -2,14 +2,26 @@ import customtkinter as ctk
 import threading
 import json
 import logging
+import os
 
 from services.youtube_downloader import YoutubeDownloader
 from services.video_cutter import VideoCutter
 from utils.time_utils import get_seconds
 
+
+# -----------------------------
+# UI設定
+# -----------------------------
+
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
+
+# -----------------------------
+# ログ設定
+# -----------------------------
+
+os.makedirs("logs", exist_ok=True)
 
 logging.basicConfig(
     filename="logs/app.log",
@@ -17,6 +29,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
+
+# -----------------------------
+# メインアプリ
+# -----------------------------
 
 class ShortsApp(ctk.CTk):
 
@@ -26,6 +42,8 @@ class ShortsApp(ctk.CTk):
         self.title("YouTube 動画切り抜きツール")
         self.geometry("650x500")
 
+        logging.info("アプリ起動")
+
         with open("config.json") as f:
             self.config = json.load(f)
 
@@ -33,6 +51,10 @@ class ShortsApp(ctk.CTk):
         self.cutter = VideoCutter()
 
         self.create_widgets()
+
+    # -----------------------------
+    # UI作成
+    # -----------------------------
 
     def create_widgets(self):
 
@@ -72,6 +94,10 @@ class ShortsApp(ctk.CTk):
 
         self.run_button.pack(pady=30)
 
+    # -----------------------------
+    # 時間入力
+    # -----------------------------
+
     def time_entry(self, parent, col):
 
         entry = ctk.CTkEntry(parent, width=70)
@@ -80,16 +106,32 @@ class ShortsApp(ctk.CTk):
 
         return entry
 
+    # -----------------------------
+    # 処理開始
+    # -----------------------------
+
     def start_process(self):
+
+        if self.run_button.cget("state") == "disabled":
+            return
+
+        self.run_button.configure(state="disabled")
 
         thread = threading.Thread(target=self.process)
         thread.start()
+
+    # -----------------------------
+    # メイン処理
+    # -----------------------------
 
     def process(self):
 
         try:
 
             url = self.url_entry.get().strip()
+
+            if not url:
+                raise Exception("URLを入力してください")
 
             start = get_seconds(
                 self.start_h.get(),
@@ -103,14 +145,33 @@ class ShortsApp(ctk.CTk):
                 self.end_s.get()
             )
 
+            if start >= end:
+                raise Exception("終了時間は開始時間より後にしてください")
+
+            logging.info(f"処理開始 URL={url}")
+
+            # -----------------
+            # ダウンロード
+            # -----------------
+
             self.update_status("動画ダウンロード中...", 0.3)
+
+            logging.info("動画ダウンロード開始")
 
             video_path = self.downloader.download(
                 url,
                 self.config["download_file"]
             )
 
+            logging.info(f"ダウンロード完了 {video_path}")
+
+            # -----------------
+            # 切り抜き
+            # -----------------
+
             self.update_status("動画切り抜き中...", 0.7)
+
+            logging.info("動画切り抜き開始")
 
             self.cutter.cut(
                 video_path,
@@ -119,18 +180,33 @@ class ShortsApp(ctk.CTk):
                 self.config["output_dir"]
             )
 
+            logging.info("動画切り抜き完了")
+
             self.update_status("完了", 1)
 
         except Exception as e:
 
             logging.exception(e)
+
             self.update_status(f"エラー: {str(e)}", 0)
+
+        finally:
+
+            self.after(0, lambda: self.run_button.configure(state="normal"))
+
+    # -----------------------------
+    # UI更新
+    # -----------------------------
 
     def update_status(self, text, progress):
 
         self.after(0, lambda: self.status_label.configure(text=text))
         self.after(0, lambda: self.progress.set(progress))
 
+
+# -----------------------------
+# 起動
+# -----------------------------
 
 if __name__ == "__main__":
 
