@@ -1,0 +1,9 @@
+memo.txt
+outputs/
+downloads/
+logs/
+
+__pycache__/
+*.pyc
+
+.env
